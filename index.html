@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSL Release Notes Generator // SYSTEM ONLINE</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { background: #000; font-family: 'Share Tech Mono', monospace; }
+    .font-cyber { font-family: 'Orbitron', sans-serif; }
+    .glow-green { text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00, 0 0 30px #00ff00; }
+    .glow-green-subtle { text-shadow: 0 0 5px #00ff0080; }
+    .glow-box { box-shadow: 0 0 15px #00ff0030, inset 0 0 15px #00ff0010; }
+    .glow-box-bright { box-shadow: 0 0 20px #00ff0050, inset 0 0 20px #00ff0020; }
+    .scanline { background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px); pointer-events: none; }
+    .matrix-bg { background: linear-gradient(180deg, #000800 0%, #001000 50%, #000800 100%); }
+    .cyber-border { border: 1px solid #00ff0040; }
+    .cyber-border-bright { border: 1px solid #00ff00; }
+    @keyframes flicker { 0%, 100% { opacity: 1; } 92% { opacity: 1; } 93% { opacity: 0.8; } 94% { opacity: 1; } 97% { opacity: 0.9; } }
+    @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+    .flicker { animation: flicker 4s infinite; }
+    .pulse-glow { animation: pulse 2s infinite; }
+    .cursor-blink::after { content: '█'; animation: blink 1s infinite; }
+    .terminal-text { color: #00ff00; }
+    .terminal-dim { color: #00aa00; }
+    .terminal-bright { color: #00ff00; text-shadow: 0 0 10px #00ff00; }
+    textarea, input { caret-color: #00ff00; }
+    textarea::placeholder { color: #006600; }
+    textarea::-webkit-scrollbar { width: 8px; }
+    textarea::-webkit-scrollbar-track { background: #001100; }
+    textarea::-webkit-scrollbar-thumb { background: #00ff0040; border-radius: 4px; }
+    textarea::-webkit-scrollbar-thumb:hover { background: #00ff0060; }
+    input[type="file"]::-webkit-file-upload-button { background: #001a00; color: #00ff00; border: 1px solid #00ff00; padding: 8px 16px; cursor: pointer; font-family: 'Share Tech Mono', monospace; }
+    input[type="file"]::-webkit-file-upload-button:hover { background: #002200; box-shadow: 0 0 10px #00ff0050; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const PSLReleaseNotesGenerator = () => {
+      const [pslConfig, setPslConfig] = useState('');
+      const [reportData, setReportData] = useState(null);
+      const [releaseNotes, setReleaseNotes] = useState('');
+      const [parsedData, setParsedData] = useState(null);
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [copySuccess, setCopySuccess] = useState(false);
+      const [isDragging, setIsDragging] = useState(false);
+      const [bootSequence, setBootSequence] = useState(true);
+      const [bootText, setBootText] = useState('');
+
+      useEffect(() => {
+        const bootMessages = [
+          '> INITIALIZING SYSTEM...',
+          '> LOADING NEURAL NETWORK...',
+          '> CONNECTING TO ATROPOS MAINFRAME...',
+          '> PSL PARSER v2.0.77 LOADED',
+          '> VOCABULARY MATRIX ONLINE',
+          '> SYSTEM READY_'
+        ];
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < bootMessages.length) {
+            setBootText(prev => prev + bootMessages[i] + '\n');
+            i++;
+          } else {
+            clearInterval(interval);
+            setTimeout(() => setBootSequence(false), 500);
+          }
+        }, 300);
+        return () => clearInterval(interval);
+      }, []);
+
+      const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+      const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); if (e.currentTarget.contains(e.relatedTarget)) return; setIsDragging(false); };
+      const handleDrop = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); const file = e.dataTransfer.files[0]; if (file) { const reader = new FileReader(); reader.onload = (event) => { setPslConfig(event.target.result); }; reader.readAsText(file); } };
+      const handleDragEnter = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+      const handleFileSelect = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (event) => { setPslConfig(event.target.result); }; reader.readAsText(file); } };
+
+      const parseReportFile = (reportText) => {
+        const report = { totalPatients: 0, recordedPatients: 0, schemas: {}, features: {} };
+        const featureSectionMatch = reportText.match(/^Feature\s+\w+\s+has\s+[\d,]+\s+values/m);
+        let relevantText = featureSectionMatch ? reportText.substring(0, featureSectionMatch.index) : reportText;
+        const patientMatch = relevantText.match(/recorded patients\s*=\s*[\d,]+\s*\/\s*([\d,]+)/);
+        if (patientMatch) report.recordedPatients = parseInt(patientMatch[1].replace(/,/g, ''));
+        const schemaMatches = relevantText.matchAll(/SCHEMA\s*\[(\d+),\s*(\w+)\]\s+PAT CNT=([\d,]+)\s+ROW CNT=([\d,]+)/gs);
+        for (const match of schemaMatches) { report.schemas[match[2]] = { patientCount: parseInt(match[3].replace(/,/g, '')), rowCount: parseInt(match[4].replace(/,/g, '')) }; }
+        return report;
+      };
+
+      const handleReportUpload = (event) => { const file = event.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (e) => { try { setReportData(parseReportFile(e.target.result)); } catch (err) { alert('ERROR: CORRUPTED DATA FILE'); } }; reader.readAsText(file); } };
+
+      const parseConfig = (config) => {
+        const result = { dataset: {}, variables: {}, features: [], vocabs: new Set(), sources: new Set(), populatedFeatures: new Set() };
+        const datasetMatch = config.match(/DATASET\s+(\w+)\s*\{([^}]+)\}/);
+        if (datasetMatch) {
+          result.dataset.name = datasetMatch[1]; const body = datasetMatch[2];
+          const v = body.match(/DATASET_VERSION\s*=\s*([^\n]+)/); if (v) result.dataset.version = v[1].trim();
+          const d = body.match(/DATASET_EFFECTIVE_DATE\s*=\s*([^\n]+)/); if (d) result.dataset.effectiveDate = d[1].trim();
+          const c = body.match(/FUTURE_CUTOFF\s*=\s*([^\n]+)/); if (c) result.dataset.futureCutoff = c[1].trim();
+          const p = body.match(/DATA_PROVIDER_CODE\s*=\s*([^\n]+)/); if (p) result.dataset.provider = p[1].trim();
+          const s = body.match(/DATA_SOURCE_CODE\s*=\s*([^\n]+)/); if (s) result.dataset.source = s[1].trim();
+          result.dataset.hasEHR = /SOURCE_EHR\s*=\s*TRUE/i.test(body);
+          result.dataset.hasClaims = /SOURCE_MEDICAL_CLAIMS\s*=\s*TRUE/i.test(body) || /SOURCE_RX_CLAIMS\s*=\s*TRUE/i.test(body);
+        }
+        for (const m of config.matchAll(/VARIABLE\s+(\w+)\s*\{([^}]+)\}/g)) result.variables[m[1]] = m[2].trim();
+        for (const m of config.matchAll(/FEATURE\s+(\w+),\s*([^,]+),\s*(\w+)/g)) result.features.push({ name: m[1], alias: m[2].trim(), type: m[3] });
+        for (const m of config.matchAll(/QUERY\s+\w+\s+FROM\s+[^{]+\{([^}]+)\}/gs)) {
+          for (const a of m[1].matchAll(/(\w+)(?:\.(?:CODE|NAME|START|END))?\s*=\s*([^\n]+)/g)) {
+            if (a[1] !== 'PID' && a[1] !== 'DOB' && a[2].trim() !== 'NULL' && a[2].trim() !== 'null') result.populatedFeatures.add(a[1]);
+          }
+        }
+        let t; const dp = /\$DATA_SCHEMA\.(\w+)/g; while ((t = dp.exec(config)) !== null) result.sources.add(t[1]);
+        for (const m of config.matchAll(/TRANSFORM\s+FROM\s+(\w+)[^{]*\{[^}]*SOURCE\.FEATURE\s*=\s*"(\w+)"/gs)) { const f = m[2]; if (f === 'ICD9') result.vocabs.add('ICD9CM'); if (f === 'ICD10') result.vocabs.add('ICD10CM'); if (f === 'CPT') result.vocabs.add('CPT/HCPCS'); if (f === 'ICD10PCS') result.vocabs.add('ICD10PCS'); if (f === 'RX') result.vocabs.add('RxNorm'); if (f === 'ATC') result.vocabs.add('ATC'); if (f === 'LOINC') result.vocabs.add('LOINC'); }
+        for (const m of config.matchAll(/HIERARCHY\s+FROM\s+(\w+)[^{]*\{[^}]*CHILD\.FEATURE\s*=\s*"(\w+)"/gs)) { const f = m[2]; if (f === 'ICD9') result.vocabs.add('ICD9CM'); if (f === 'ICD10') result.vocabs.add('ICD10CM'); if (f === 'CPT') result.vocabs.add('CPT/HCPCS'); if (f === 'ICD10PCS') result.vocabs.add('ICD10PCS'); if (f === 'RX') result.vocabs.add('RxNorm'); if (f === 'ATC') result.vocabs.add('ATC'); if (f === 'LOINC') result.vocabs.add('LOINC'); }
+        return result;
+      };
+
+      const categorizeFeatures = (features, populatedFeatures) => {
+        const cat = { PERSON: [], VISIT: [], CONDITION: [], PROCEDURE: [], DRUG_EXPOSURE: [], MEASUREMENT: [], PROVIDER: [], PAYER_PLAN: [], COST: [] };
+        features.forEach(function(f) {
+          const n = f.name.toUpperCase(); if (!populatedFeatures.has(f.name)) return;
+          if (['GENDER', 'RACE', 'ETHNICITY', 'DEATH', 'ZIP', 'DOB'].includes(n)) cat.PERSON.push(f);
+          else if (n.includes('VISIT') || n === 'VISIT_TYPE') cat.VISIT.push(f);
+          else if (['ICD9', 'ICD10', 'DIAGNOSIS_DATE'].includes(n)) cat.CONDITION.push(f);
+          else if (['CPT', 'ICD10PCS', 'PROCEDURE_DATE'].includes(n)) cat.PROCEDURE.push(f);
+          else if (['RX', 'NDC', 'ATC', 'ROUTE', 'DRUG_EXPOSURE_DATE', 'DRUG_EXPOSURE_TYPE'].includes(n)) cat.DRUG_EXPOSURE.push(f);
+          else if (['LOINC', 'VALUE_AS_NUMBER', 'VALUE_AS_STRING', 'UNIT', 'MEASUREMENT_DATE'].includes(n)) cat.MEASUREMENT.push(f);
+          else if (n.includes('PROVIDER') || n === 'NPI' || n === 'CARE_SITE' || n.includes('SPECIALTY')) cat.PROVIDER.push(f);
+          else if (n.includes('PAYER') || n.includes('PLAN')) cat.PAYER_PLAN.push(f);
+          else if (n.includes('COST') || n.includes('PAID') || n.includes('CHARGE') || n === 'DRG' || n === 'REVENUE_CODE' || n === 'AMOUNT_ALLOWED') cat.COST.push(f);
+        });
+        return cat;
+      };
+
+      const generateReleaseNotes = (data, reportData) => {
+        const { dataset, features, vocabs, populatedFeatures } = data;
+        const categories = categorizeFeatures(features, populatedFeatures);
+        const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+        const dataType = dataset.hasEHR && dataset.hasClaims ? 'EHR + Claims' : dataset.hasEHR ? 'EHR' : dataset.hasClaims ? 'Claims' : 'TBD';
+        const totalPatients = reportData?.recordedPatients || 'TBD';
+        
+        let md = '# ' + (dataset.name || 'DATASET_NAME') + '-v' + (dataset.version || 'X.X.X') + ' Release Notes\n\n';
+        md += '**Release Date:** ' + today + '\n\n**Owner:** [Your Name]\n\n**Status:** Draft\n\n**JIRA:** [Link to ticket]\n\n---\n\n';
+        md += '## Release Items\n\n| Item | Content | Note |\n|------|---------|------|\n';
+        md += '| Environment name | Atropos | |\n| IP Address and Port | TBD | |\n| PHX extraction uuid | TBD | |\n| Link to machine profile | TBD | |\n';
+        md += '| Dataset effective date | ' + (dataset.effectiveDate || 'TBD') + ' | Date source shipped the data |\n';
+        md += '| Future Date Cutoff | ' + (dataset.futureCutoff || 'TBD') + ' | Events after this date will be dropped |\n';
+        md += '| ETL document - Git URL | [Config File](TBD) | |\n| CDM Version / Docs | v1.4 | |\n| RC Number that became PROD | TBD | |\n| Data Diff | TBD | |\n| RWDS Score | TBD | [Link to scorecard] |\n| Integration PG | TBD | [Link to workbench] |\n\n';
+        md += '## For Internal Releases Only\n\n| Item | Content | Note |\n|------|---------|------|\n| Raw data S3 location | TBD | |\n| DBX Dataset source schema(s) | TBD | ex: `shc_2022_01_12` in Databricks |\n| S3 location of artifacts | TBD | root, caches, ETL file, dicts, etc. |\n\n';
+        md += '## Quick Facts and Links\n\n';
+        if (reportData && Object.keys(reportData.schemas).length > 0) {
+          md += '### Schema Statistics\n\n| Schema | Patient Count | Row Count |\n|--------|--------------|------------|\n';
+          Object.entries(reportData.schemas).forEach(function(e) { md += '| ' + e[0] + ' | ' + e[1].patientCount.toLocaleString() + ' | ' + e[1].rowCount.toLocaleString() + ' |\n'; });
+          md += '\n';
+        }
+        md += '### Features\n\n';
+        Object.entries(categories).forEach(function(e) { if (e[1].length > 0) { md += '**' + e[0].replace('_', ' ') + '**\n'; e[1].forEach(function(f) { md += '- ' + f.name + '\n'; }); md += '\n'; } });
+        md += '### Sales/CS Q+A\n\n';
+        md += '1. **Is it claims or EMR?** ' + dataType + '\n';
+        md += '2. **Number of Patients:** ' + (typeof totalPatients === 'number' ? totalPatients.toLocaleString() : totalPatients) + '\n   - How many have >10 events? TBD\n   - How many have >5 years of data? TBD\n';
+        md += '3. **Do we have procedures?** ' + (categories.PROCEDURE.length > 0 ? '✅ Yes (' + categories.PROCEDURE.map(function(f) { return f.name; }).join(', ') + ')' : '❌ No') + '\n';
+        if (reportData && (reportData.schemas.CPT || reportData.schemas.ICD10PCS)) { md += '   - Patient counts:\n'; if (reportData.schemas.CPT) md += '     - CPT: ' + reportData.schemas.CPT.patientCount.toLocaleString() + ' patients\n'; if (reportData.schemas.ICD10PCS) md += '     - ICD10PCS: ' + reportData.schemas.ICD10PCS.patientCount.toLocaleString() + ' patients\n'; }
+        md += '4. **Do we have labs?** ' + (categories.MEASUREMENT.length > 0 ? '✅ Yes (LOINC-coded measurements)' : '❌ No') + '\n';
+        if (reportData && reportData.schemas.MEASUREMENT) { md += '   - ' + reportData.schemas.MEASUREMENT.patientCount.toLocaleString() + ' patients with measurements\n   - ' + reportData.schemas.MEASUREMENT.rowCount.toLocaleString() + ' total measurement records\n'; }
+        md += '5. **Do we have lab results?** ' + (categories.MEASUREMENT.some(function(f) { return f.name.includes('VALUE'); }) ? '✅ Yes (numeric and categorical)' : 'TBD') + '\n';
+        md += '6. **Race and Ethnicity Data Availability:**\n   - Race: ' + (categories.PERSON.some(function(f) { return f.name === 'RACE'; }) ? 'Available (TBD% populated)' : '❌ Not available') + '\n   - Ethnicity: ' + (categories.PERSON.some(function(f) { return f.name === 'ETHNICITY'; }) ? 'Available (TBD% populated)' : '❌ Not available') + '\n';
+        md += '7. **Death/Mortality Data Availability:** ' + (categories.PERSON.some(function(f) { return f.name === 'DEATH'; }) ? '✅ Yes' : '❌ No') + '\n';
+        md += '8. **Geographic Coverage:** ' + (categories.PERSON.some(function(f) { return f.name === 'ZIP'; }) ? 'ZIP codes available' : 'TBD') + '\n';
+        md += '9. **Provider Identifiers:**\n   - Provider ID: ' + (categories.PROVIDER.some(function(f) { return f.name === 'PROVIDER_ID'; }) ? '✅ Yes' : '❌ No') + '\n   - NPI: ' + (categories.PROVIDER.some(function(f) { return f.name === 'NPI'; }) ? '✅ Yes' : '❌ No') + '\n   - Provider Specialty: ' + (categories.PROVIDER.some(function(f) { return f.name.includes('SPECIALTY'); }) ? '✅ Yes' : '❌ No') + '\n   - Care Site: ' + (categories.PROVIDER.some(function(f) { return f.name === 'CARE_SITE'; }) ? '✅ Yes' : '❌ No') + '\n';
+        md += '10. **Payer Types:** ' + (categories.PAYER_PLAN.length > 0 ? 'Available - TBD breakdown' : 'Not available') + '\n';
+        if (reportData && reportData.schemas.PAYER_PLAN_PERIOD) { md += '    - ' + reportData.schemas.PAYER_PLAN_PERIOD.patientCount.toLocaleString() + ' patients with payer information\n'; }
+        md += '11. **Cost Data:** ' + (categories.COST.length > 0 ? 'Available (' + categories.COST.length + ' populated cost features)' : '❌ No cost data') + '\n';
+        if (categories.COST.length > 0) { md += '    - Populated Features: ' + categories.COST.map(function(f) { return f.name; }).join(', ') + '\n'; if (reportData && reportData.schemas.COST) { md += '    - ' + reportData.schemas.COST.patientCount.toLocaleString() + ' patients with cost data\n    - ' + reportData.schemas.COST.rowCount.toLocaleString() + ' total cost records\n'; } }
+        md += '\n**Pre-ETL Validations of Source Data:** [Link to validation spreadsheet]\n\n';
+        md += '## Summary of Release\n\nThis is a ' + (dataset.version ? 'v' + dataset.version : 'new') + ' release of ' + (dataset.source || 'SOURCE') + ' data from ' + (dataset.provider || 'PROVIDER') + '. It includes ' + dataType.toLowerCase() + ' data effective through ' + (dataset.effectiveDate || '[DATE]') + '.\n\n';
+        md += '**Key Highlights:**\n- **Patient Count:** ' + (typeof totalPatients === 'number' ? totalPatients.toLocaleString() : totalPatients) + '\n- **Data Types:** ' + dataType + '\n- **Vocabularies Applied:** ' + (vocabs.size > 0 ? Array.from(vocabs).join(', ') : 'TBD') + '\n- **Features Available:** ' + features.length + ' features across ' + Object.values(categories).filter(function(c) { return c.length > 0; }).length + ' domains\n\n';
+        md += '## Key Warnings\n\n### Data Quality Notes\n- [ ] TODO: Document expected NULL percentages for RACE, ETHNICITY\n- [ ] TODO: Document provider linkage coverage\n- [ ] TODO: Note any vocabulary mapping gaps\n- [ ] TODO: Document any measurement value filtering rules\n- [ ] TODO: Note any deduplication logic applied\n\n';
+        md += '### Known Limitations\n'; if (!categories.PERSON.some(function(f) { return f.name === 'DEATH'; })) md += '- ⚠️ No death/mortality data available\n'; if (categories.COST.length === 0) md += '- ⚠️ No cost data available\n'; md += '\n';
+        md += '## Data Dictionary\n\n[Link to detailed data dictionary]\n\n';
+        md += '## Source Tables Processed\n\n'; if (data.sources && data.sources.size > 0) { Array.from(data.sources).sort().forEach(function(t) { md += '- `' + t + '`\n'; }); } else { md += '- TBD (no source tables detected)\n'; } md += '\n';
+        md += '## Clinical Review\n\n| Original PG | PG re-run | Results |\n|-------------|-----------|----------|\n| [Link] | [Link] | TBD |\n\n';
+        md += '### Major Features\n'; Object.entries(categories).forEach(function(e) { if (e[1].length > 0) md += '- **' + e[0].replace('_', ' ') + ':** ' + e[1].map(function(f) { return f.name; }).join(', ') + '\n'; }); md += '\n';
+        md += '### Vocabulary Review\n'; if (vocabs.size > 0) { Array.from(vocabs).forEach(function(v) { md += '- [ ] ' + v + ' reviewed\n'; }); } else { md += '- [ ] No vocabularies detected - manual review needed\n'; } md += '\n';
+        md += '### Major Deficiencies\n- TBD (to be identified during clinical review)\n\n### Prognostogram Tests\n- [ ] Integration PG completed\n- [ ] 3-5 validation PGs completed for new dataset / 1-2 for updates\n\n**Final Clinical Decision:** Pending Review ⏳\n\n';
+        return md;
+      };
+
+      const handleGenerate = () => { setIsProcessing(true); setTimeout(function() { try { const parsed = parseConfig(pslConfig); setParsedData(parsed); setReleaseNotes(generateReleaseNotes(parsed, reportData)); } catch (err) { alert('SYSTEM ERROR: ' + err.message); } setIsProcessing(false); }, 800); };
+      const downloadNotes = () => { const blob = new Blob([releaseNotes], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'release_notes.md'; a.click(); URL.revokeObjectURL(url); };
+      const copyNotes = () => { navigator.clipboard.writeText(releaseNotes); setCopySuccess(true); setTimeout(function() { setCopySuccess(false); }, 2000); };
+
+      if (bootSequence) {
+        return (
+          <div className="min-h-screen matrix-bg flex items-center justify-center p-6">
+            <div className="max-w-2xl w-full">
+              <pre className="terminal-text text-sm whitespace-pre-wrap">{bootText}<span className="animate-pulse">█</span></pre>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen matrix-bg p-6 relative">
+          <div className="absolute inset-0 scanline opacity-30"></div>
+          <div className="max-w-7xl mx-auto relative z-10">
+            {/* Header */}
+            <div className="bg-black cyber-border glow-box rounded-lg p-8 mb-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 border-2 border-green-500 rounded-lg flex items-center justify-center glow-box-bright">
+                  <span className="text-2xl flicker">⌘</span>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-cyber font-bold terminal-bright glow-green tracking-wider">PSL RELEASE NOTES GENERATOR</h1>
+                  <p className="terminal-dim text-sm tracking-wide">// SYSTEM v2.0.77 :: NEURAL PARSER ONLINE</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 flex-wrap">
+                <span className="px-3 py-1 bg-green-900/30 terminal-text text-xs rounded cyber-border">[SALES_QA::LOADED]</span>
+                <span className="px-3 py-1 bg-green-900/30 terminal-text text-xs rounded cyber-border">[FEATURE_SCAN::ACTIVE]</span>
+                <span className="px-3 py-1 bg-green-900/30 terminal-text text-xs rounded cyber-border">[VOCAB_MATRIX::ONLINE]</span>
+                <span className="px-3 py-1 bg-green-900/30 terminal-text text-xs rounded cyber-border">[CLINICAL_REV::READY]</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column */}
+              <div className="space-y-4">
+                <div className="bg-black cyber-border glow-box rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="terminal-bright font-cyber tracking-wide">&gt; PSL_CONFIG_INPUT</h2>
+                    <span className="terminal-text pulse-glow">●</span>
+                  </div>
+                  
+                  <div className={"relative rounded-lg transition-all " + (isDragging ? "ring-2 ring-green-500" : "")} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+                    {isDragging && (
+                      <div className="absolute inset-0 bg-green-900/30 border-2 border-dashed border-green-500 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+                        <div className="text-center">
+                          <span className="text-4xl">📡</span>
+                          <p className="terminal-bright font-mono mt-2">&gt; DROP_FILE_TO_UPLOAD</p>
+                        </div>
+                      </div>
+                    )}
+                    <textarea value={pslConfig} onChange={function(e) { setPslConfig(e.target.value); }} placeholder="> AWAITING DATA INPUT..." className={"w-full h-64 p-4 bg-black/50 cyber-border rounded-lg font-mono text-xs terminal-text resize-none focus:outline-none focus:border-green-400 focus:glow-box-bright transition-all " + (isDragging ? "pointer-events-none" : "")} />
+                  </div>
+                  
+                  <div className="mt-3 flex items-center gap-3">
+                    <label className="flex items-center gap-2 px-3 py-2 bg-green-900/20 hover:bg-green-900/40 rounded cursor-pointer transition text-sm terminal-text cyber-border">
+                      <span>⬆</span><span>BROWSE_FILES</span>
+                      <input type="file" accept=".txt,.psl,.config" onChange={handleFileSelect} className="hidden" />
+                    </label>
+                    <span className="text-xs terminal-dim">// or drag & drop</span>
+                  </div>
+                </div>
+
+                <div className="bg-black cyber-border glow-box rounded-lg p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="terminal-bright font-cyber tracking-wide">&gt; REPORT_UPLOAD</h2>
+                    <span className="terminal-dim text-xs">[OPTIONAL]</span>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label className="block text-sm mb-2 terminal-dim">// Upload REPORT.txt for patient statistics</label>
+                    <input type="file" accept=".txt" onChange={handleReportUpload} className="w-full p-2 bg-black/50 cyber-border rounded text-sm terminal-text" />
+                  </div>
+
+                  {reportData && (
+                    <div className="bg-green-900/20 cyber-border-bright rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="terminal-bright">✓</span>
+                        <span className="terminal-bright font-mono">DATA_STREAM_CONNECTED</span>
+                      </div>
+                      <div className="text-sm terminal-text space-y-1 font-mono">
+                        <div>&gt; PATIENTS: {reportData.recordedPatients.toLocaleString()}</div>
+                        <div>&gt; SCHEMAS: {Object.keys(reportData.schemas).length}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={handleGenerate} disabled={isProcessing || !pslConfig.trim()} className="w-full bg-green-900/30 hover:bg-green-900/50 terminal-bright py-4 rounded-lg font-cyber tracking-widest transition disabled:opacity-30 disabled:cursor-not-allowed cyber-border-bright glow-box-bright text-lg">
+                  {isProcessing ? '> PROCESSING...' : '> EXECUTE_GENERATION'}
+                </button>
+
+                {parsedData && (
+                  <div className="bg-black cyber-border glow-box rounded-lg p-6">
+                    <h3 className="terminal-bright font-cyber mb-4 tracking-wide">&gt; SCAN_RESULTS</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-green-900/20 cyber-border p-4 rounded-lg">
+                        <div className="text-2xl font-bold terminal-bright glow-green-subtle">{parsedData.populatedFeatures.size}</div>
+                        <div className="text-xs terminal-dim font-mono">FEATURES</div>
+                      </div>
+                      <div className="bg-green-900/20 cyber-border p-4 rounded-lg">
+                        <div className="text-2xl font-bold terminal-bright glow-green-subtle">{parsedData.vocabs.size}</div>
+                        <div className="text-xs terminal-dim font-mono">VOCABULARIES</div>
+                      </div>
+                      <div className="bg-green-900/20 cyber-border p-4 rounded-lg">
+                        <div className="text-2xl font-bold terminal-bright glow-green-subtle">{parsedData.sources.size}</div>
+                        <div className="text-xs terminal-dim font-mono">SOURCE_TABLES</div>
+                      </div>
+                      <div className="bg-green-900/20 cyber-border p-4 rounded-lg">
+                        <div className="text-2xl font-bold terminal-bright glow-green-subtle">{parsedData.dataset.hasEHR && parsedData.dataset.hasClaims ? 'DUAL' : parsedData.dataset.hasEHR ? 'EHR' : parsedData.dataset.hasClaims ? 'CLM' : 'N/A'}</div>
+                        <div className="text-xs terminal-dim font-mono">DATA_TYPE</div>
+                      </div>
+                    </div>
+
+                    {parsedData.vocabs.size > 0 && (
+                      <div className="mt-4 pt-4 border-t border-green-900/50">
+                        <div className="text-xs terminal-dim mb-2 font-mono">&gt; DETECTED_VOCABULARIES:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {Array.from(parsedData.vocabs).map(function(v) { return <span key={v} className="px-2 py-1 bg-green-900/30 terminal-text text-xs rounded cyber-border font-mono">{v}</span>; })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-4">
+                {releaseNotes ? (
+                  <div className="bg-black cyber-border glow-box rounded-lg p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="terminal-bright font-cyber tracking-wide">&gt; OUTPUT_STREAM</h2>
+                      <div className="flex gap-2">
+                        <button onClick={copyNotes} className="px-3 py-2 bg-green-900/20 hover:bg-green-900/40 rounded transition text-sm terminal-text cyber-border font-mono">{copySuccess ? '✓ COPIED' : '⎘ COPY'}</button>
+                        <button onClick={downloadNotes} className="px-3 py-2 bg-green-900/20 hover:bg-green-900/40 rounded transition text-sm terminal-text cyber-border font-mono">⬇ DOWNLOAD</button>
+                      </div>
+                    </div>
+
+                    <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-600/50 rounded-lg">
+                      <div className="flex gap-2">
+                        <span className="text-yellow-500">⚠</span>
+                        <div className="text-sm text-yellow-500 font-mono">&gt; WARNING: Template contains TBD fields requiring manual input</div>
+                      </div>
+                    </div>
+
+                    <textarea value={releaseNotes} onChange={function(e) { setReleaseNotes(e.target.result); }} className="w-full h-96 p-4 bg-black/50 cyber-border rounded-lg font-mono text-xs terminal-text resize-none focus:outline-none focus:border-green-400" />
+                  </div>
+                ) : (
+                  <div className="bg-black cyber-border glow-box rounded-lg p-12 text-center h-full flex flex-col items-center justify-center min-h-96">
+                    <div className="text-6xl mb-4 flicker">⌨</div>
+                    <h3 className="text-xl font-cyber terminal-bright mb-2 tracking-wide">&gt; AWAITING_INPUT</h3>
+                    <p className="terminal-dim mb-6 font-mono text-sm">// Load PSL config to initialize generation sequence</p>
+                    
+                    <div className="text-left bg-green-900/10 p-4 rounded-lg max-w-md cyber-border">
+                      <div className="text-sm terminal-text mb-2 font-mono">&gt; SYSTEM_CAPABILITIES:</div>
+                      <ul className="text-sm terminal-dim space-y-1 font-mono">
+                        <li>├─ Release items table</li>
+                        <li>├─ Feature domain mapping</li>
+                        <li>├─ Sales/CS Q&A generation</li>
+                        <li>├─ Vocabulary detection</li>
+                        <li>└─ Clinical review checklist</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="mt-8 text-center terminal-dim text-xs font-mono tracking-widest">
+              PSL_RELEASE_NOTES_GENERATOR :: ATROPOS_HEALTH :: {new Date().getFullYear()}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<PSLReleaseNotesGenerator />, document.getElementById('root'));
+  </script>
+</body>
+</html>
